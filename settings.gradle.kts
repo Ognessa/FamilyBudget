@@ -1,7 +1,7 @@
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 enableFeaturePreview("STABLE_CONFIGURATION_CACHE")
 
-rootProject.name = "ComposeBoilerplate"
+rootProject.name = "FamilyBudget"
 include(":app")
 include(":feature")
 include(":feature:list")
