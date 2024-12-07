@@ -1,0 +1,126 @@
+image:
+  name: alvrme/alpine-android:android-34-jdk17
+
+stages:
+  - assembleDebug
+  - assembleStaging
+  - changelogDev
+  - changelogRelease
+  - deployStageDev
+  - deployStageRelease
+  - lintCompose
+  - sonar
+  - sonarqubeMRDecoration
+
+assembleDebug:
+  interruptible: true
+  stage: assembleDebug
+  only:
+    - dev
+    - merge_request
+  script:
+    - cat $GOOGLE_SERVICES_JSON > app/google-services.json
+    - echo -e "STORE_FILE=${STORE_FILE}\nSTORE_PASSWORD=${STORE_PASSWORD}\nKEY_ALIAS=${KEY_ALIAS}\nKEY_PASSWORD=${KEY_PASSWORD}" > keystore.properties
+    - cat keystore.properties
+    - chmod +x ./gradlew
+    - ./gradlew :app:assembleDebug
+
+lintDebugCompose:
+  interruptible: true
+  stage: lintCompose
+  only:
+    - staging
+    - release
+  script:
+    - cat $GOOGLE_SERVICES_JSON > app/google-services.json
+    - echo -e "STORE_FILE=${STORE_FILE}\nSTORE_PASSWORD=${STORE_PASSWORD}\nKEY_ALIAS=${KEY_ALIAS}\nKEY_PASSWORD=${KEY_PASSWORD}" > keystore.properties
+    - chmod +x ./gradlew
+    - ./gradlew :app:lintRelease
+
+assembleStaging:
+  interruptible: true
+  stage: assembleStaging
+  only:
+    - staging
+    - release
+  script:
+    - cat $GOOGLE_SERVICES_JSON > app/google-services.json
+    - echo -e "STORE_FILE=${STORE_FILE}\nSTORE_PASSWORD=${STORE_PASSWORD}\nKEY_ALIAS=${KEY_ALIAS}\nKEY_PASSWORD=${KEY_PASSWORD}" > keystore.properties
+    - cat local.properties
+    - chmod +x ./gradlew
+    - ./gradlew :app:assembleRelease
+  artifacts:
+    expire_in: 1 week
+    name: "release$(date +\"%Y-%m-%d_%H-%M\")"
+    paths:
+      - app/build/outputs/apk/release/
+
+changelogDev:
+  stage: changelogDev
+  only:
+    - staging
+  image:
+    name: orhunp/git-cliff:latest
+    entrypoint: [ "" ]
+  variables:
+    GIT_STRATEGY: clone
+    GIT_DEPTH: 0
+  script:
+    - cat $GIT_CLIFF_DEV_CONFIG > cliff-dev.toml
+    - git-cliff -c cliff-dev.toml --latest -r . > cliff.txt
+    - cat cliff.txt | head -n -2 > catlog.txt
+    - awk '!x[$0]++' catlog.txt > CHANGELOG.txt
+    - cat CHANGELOG.txt
+  artifacts:
+    paths:
+      - CHANGELOG.txt
+
+changelogRelease:
+  stage: changelogRelease
+  only:
+    - release
+  image:
+    name: orhunp/git-cliff:latest
+    entrypoint: [ "" ]
+  variables:
+    GIT_STRATEGY: clone
+    GIT_DEPTH: 0
+  script:
+    - cat $GIT_CLIFF_RELEASE_CONFIG > cliff-release.toml
+    - git-cliff -c cliff-release.toml --latest -r . > cliff.txt
+    - cat cliff.txt | head -n -2 > catlog.txt
+    - awk '!x[$0]++' catlog.txt > CHANGELOG.txt
+    - cat CHANGELOG.txt
+  artifacts:
+    paths:
+      - CHANGELOG.txt
+
+deployStageDev:
+  stage: deployStageDev
+  image:
+    name: andreysenov/firebase-tools
+  only:
+    - staging
+  dependencies:
+    - changelogDev
+    - assembleStaging
+  script:
+    - firebase appdistribution:distribute ./app/build/outputs/apk/release/app-arm64-v8a-release.apk --app $FIREBASE_APP_ID
+      --groups "woc_testing"
+      --token "$FIREBASE_TOKEN"
+      --release-notes "DEV BUILD\n\n$(cat CHANGELOG.txt)"
+
+deployStageRelease:
+  stage: deployStageRelease
+  image:
+    name: andreysenov/firebase-tools
+  only:
+    - release
+  dependencies:
+    - changelogRelease
+    - assembleStaging
+  script:
+    - firebase appdistribution:distribute ./app/build/outputs/apk/release/app-arm64-v8a-release.apk --app $FIREBASE_APP_ID
+      --groups "woc_testing"
+      --token "$FIREBASE_TOKEN"
+      --release-notes "RELEASE BUILD\n\n$(cat CHANGELOG.txt)"

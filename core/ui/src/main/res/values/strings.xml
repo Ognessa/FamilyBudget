@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="api_request_limit_error">API request limit exceeded. Wait a while and try again.</string>
+    <string name="unknown_error_message">Oops! Something went wrong. Please check your internet connection and try again later.</string>
+    <string name="http_error_code">Http error (code: %1$d). Please check your internet connection and try again later.</string>
+</resources>
